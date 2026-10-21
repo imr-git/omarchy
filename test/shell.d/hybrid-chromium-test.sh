@@ -39,7 +39,8 @@ ln -s "$pci_path/0000:00:02.0" "$drm_path/card1/device"
 ln -s "$pci_path/0000:01:00.0" "$drm_path/renderD128/device"
 ln -s "$pci_path/0000:00:02.0" "$drm_path/renderD129/device"
 touch "$dri_path/card0" "$dri_path/card1" "$dri_path/renderD128" "$dri_path/renderD129"
-touch "$driver_path/i965_drv_video.so" "$mesa_egl"
+# Stock Haswell installs can contain both drivers even though only i965 works.
+touch "$driver_path/iHD_drv_video.so" "$driver_path/i965_drv_video.so" "$mesa_egl"
 ln -s "$dri_path/card1" "$test_tmp/gpu-intel"
 ln -s "$dri_path/card0" "$test_tmp/gpu-nvidia"
 
@@ -69,7 +70,6 @@ run_launcher() {
     OMARCHY_PCI_DEVICES_PATH="$pci_path" \
     OMARCHY_DRM_PATH="$drm_path" \
     OMARCHY_DRI_DEVICE_PATH="$dri_path" \
-    OMARCHY_DRI_DRIVER_PATH="$driver_path" \
     TEST_OUTPUT="$output" \
     "$@" >"$output"
 }
@@ -80,8 +80,8 @@ run_launcher \
   AQ_DRM_DEVICES="$test_tmp/gpu-intel:$test_tmp/gpu-nvidia" \
   "$launcher_under_test" https://example.test
 
-grep -Fxq 'LIBVA_DRIVER_NAME=i965' "$output" ||
-  fail "the Chromium launcher selects Haswell's installed VA-API driver" "$(cat "$output")"
+grep -Fxq 'LIBVA_DRIVER_NAME=' "$output" ||
+  fail "the Chromium launcher lets libva select a compatible Intel driver" "$(cat "$output")"
 grep -Fxq "__EGL_VENDOR_LIBRARY_FILENAMES=$mesa_egl" "$output" ||
   fail "the Chromium launcher selects Mesa EGL for an Aquamarine iGPU" "$(cat "$output")"
 grep -Fxq 'DRI_PRIME=pci-0000_00_02_0' "$output" ||
@@ -92,8 +92,17 @@ grep -Fxq 'arg=https://example.test' "$output" ||
   fail "the Chromium launcher preserves Chromium arguments" "$(cat "$output")"
 pass "Chromium follows Aquamarine's Intel renderer on a muxed NVIDIA-display Mac"
 
+# Keep an explicit user VA-API choice even when both Intel drivers are present.
+run_launcher \
+  AQ_DRM_DEVICES="$test_tmp/gpu-intel:$test_tmp/gpu-nvidia" \
+  env LIBVA_DRIVER_NAME=i965 "$launcher_under_test"
+
+grep -Fxq 'LIBVA_DRIVER_NAME=i965' "$output" ||
+  fail "the Chromium launcher preserves a user-selected Intel VA-API driver" "$(cat "$output")"
+pass "Chromium preserves an explicit Intel VA-API driver choice"
+
 # A caller's deliberate node selection has higher priority than the automatic
-# one, while DRI_PRIME still keeps Mesa on Aquamarine's device.
+# selectors, so the wrapper must not add a conflicting DRI_PRIME value.
 run_launcher \
   AQ_DRM_DEVICES="$test_tmp/gpu-intel:$test_tmp/gpu-nvidia" \
   "$launcher_under_test" --render-node-override=/dev/dri/renderD140
@@ -102,6 +111,8 @@ grep -Fxq 'arg=--render-node-override=/dev/dri/renderD140' "$output" ||
   fail "the Chromium launcher preserves a caller render-node override" "$(cat "$output")"
 (( $(grep -c '^arg=--render-node-override=' "$output") == 1 )) ||
   fail "the Chromium launcher does not duplicate a render-node override" "$(cat "$output")"
+grep -Fxq 'DRI_PRIME=' "$output" ||
+  fail "the Chromium launcher does not pair a caller render node with another GPU" "$(cat "$output")"
 pass "Chromium preserves a caller's render-node override"
 
 # With no compositor override, an NVIDIA boot/display GPU is intentional and
@@ -123,8 +134,8 @@ printf '1\n' >"$pci_path/0000:00:02.0/boot_vga"
 printf '0\n' >"$pci_path/0000:01:00.0/boot_vga"
 run_launcher env -u AQ_DRM_DEVICES "$launcher_under_test"
 
-grep -Fxq 'LIBVA_DRIVER_NAME=i965' "$output" ||
-  fail "the Chromium launcher selects VA-API for an iGPU display" "$(cat "$output")"
+grep -Fxq 'LIBVA_DRIVER_NAME=' "$output" ||
+  fail "the Chromium launcher lets libva select VA-API for an Intel display" "$(cat "$output")"
 grep -Fxq "__EGL_VENDOR_LIBRARY_FILENAMES=$mesa_egl" "$output" ||
   fail "the Chromium launcher selects Mesa EGL for an iGPU display" "$(cat "$output")"
 grep -Fxq 'DRI_PRIME=' "$output" ||

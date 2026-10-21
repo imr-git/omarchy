@@ -8,7 +8,7 @@
 #
 # Fix: for Chromium only, route launches through omarchy-launch-chromium, which
 # follows AQ_DRM_DEVICES before boot_vga, forces Mesa EGL, selects the matching
-# render node and VA-API driver, and leaves system-wide EGL alone.
+# render node, and leaves system-wide EGL alone.
 #
 # See: https://github.com/basecamp/omarchy/issues/4901
 

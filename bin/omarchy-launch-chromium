@@ -3,10 +3,10 @@
 # omarchy:summary=Launch Chromium on Hyprland's EGL and VA-API GPU on hybrid NVIDIA laptops
 # omarchy:hidden=true
 
-# Launch Chromium with Mesa EGL on the same GPU as the Hyprland compositor and
-# a matching VA-API driver, working around cross-GPU DMA-BUF import failures on
-# hybrid NVIDIA + iGPU laptops. Used by the user chromium.desktop override
-# installed by install/user/hardware/fix-hybrid-chromium.sh.
+# Launch Chromium with Mesa EGL on the same GPU as the Hyprland compositor,
+# working around cross-GPU DMA-BUF import failures on hybrid NVIDIA + iGPU
+# laptops. Used by the user chromium.desktop override installed by
+# install/user/hardware/fix-hybrid-chromium.sh.
 #
 # AQ_DRM_DEVICES is authoritative when present: its first device is
 # Aquamarine's primary renderer. This matters on muxed Intel Macs where NVIDIA
@@ -21,7 +21,6 @@ MESA_EGL="${OMARCHY_MESA_EGL:-/usr/share/glvnd/egl_vendor.d/50_mesa.json}"
 pci_devices_path="${OMARCHY_PCI_DEVICES_PATH:-/sys/bus/pci/devices}"
 drm_path="${OMARCHY_DRM_PATH:-/sys/class/drm}"
 dri_device_path="${OMARCHY_DRI_DEVICE_PATH:-/dev/dri}"
-dri_driver_path="${OMARCHY_DRI_DRIVER_PATH:-/usr/lib/dri}"
 
 primary_vendor=""
 primary_pci=""
@@ -79,15 +78,10 @@ if [[ -z $primary_vendor ]]; then
 fi
 
 case $primary_vendor in
-  0x8086)
-    if [[ -f $dri_driver_path/iHD_drv_video.so ]]; then
-      export LIBVA_DRIVER_NAME=iHD
-    elif [[ -f $dri_driver_path/i965_drv_video.so ]]; then
-      export LIBVA_DRIVER_NAME=i965
-    else
-      unset LIBVA_DRIVER_NAME
-    fi
-    ;;
+  # Let libva try the compatible Intel backends in order. Forcing iHD merely
+  # because its file exists breaks Haswell systems that need i965, while not
+  # assigning the variable also preserves an explicit user choice.
+  0x8086) ;;
   0x1002)
     export LIBVA_DRIVER_NAME=radeonsi
     ;;
@@ -99,10 +93,10 @@ if [[ -n $primary_vendor ]]; then
   fi
 
   # Mesa EGL alone does not select between two Mesa GPUs. When Aquamarine has
-  # an explicit iGPU primary, pin Chromium to that GPU as well. Keep a caller's
-  # own render-node override intact.
+  # an explicit iGPU primary, pin Chromium to that GPU as well. A caller's own
+  # render-node override takes priority over both automatic selectors so they
+  # cannot disagree about which GPU Chromium should use.
   if $aq_selected_primary && [[ -n $primary_render_node ]]; then
-    export DRI_PRIME="pci-${primary_pci//[:.]/_}"
     has_render_override=false
     for arg in "$@"; do
       if [[ $arg == --render-node-override=* ]]; then
@@ -111,6 +105,7 @@ if [[ -n $primary_vendor ]]; then
       fi
     done
     if ! $has_render_override; then
+      export DRI_PRIME="pci-${primary_pci//[:.]/_}"
       set -- "--render-node-override=$primary_render_node" "$@"
     fi
   fi
