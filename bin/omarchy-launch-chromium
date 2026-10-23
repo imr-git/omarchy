@@ -79,9 +79,14 @@ fi
 
 case $primary_vendor in
   # Let libva try the compatible Intel backends in order. Forcing iHD merely
-  # because its file exists breaks Haswell systems that need i965, while not
-  # assigning the variable also preserves an explicit user choice.
-  0x8086) ;;
+  # because its file exists breaks Haswell systems that need i965. Clear the
+  # NVIDIA default Omarchy exports when NVIDIA owns the display but Aquamarine
+  # renders on Intel, while preserving explicit iHD and i965 choices.
+  0x8086)
+    if [[ ${LIBVA_DRIVER_NAME:-} == "nvidia" ]]; then
+      unset LIBVA_DRIVER_NAME
+    fi
+    ;;
   0x1002)
     export LIBVA_DRIVER_NAME=radeonsi
     ;;

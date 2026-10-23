@@ -101,6 +101,17 @@ grep -Fxq 'LIBVA_DRIVER_NAME=i965' "$output" ||
   fail "the Chromium launcher preserves a user-selected Intel VA-API driver" "$(cat "$output")"
 pass "Chromium preserves an explicit Intel VA-API driver choice"
 
+# Omarchy exports the NVIDIA VA-API driver on newer NVIDIA display GPUs. When
+# Aquamarine deliberately renders on Intel instead, that inherited value must
+# not prevent libva from selecting an Intel backend.
+run_launcher \
+  AQ_DRM_DEVICES="$test_tmp/gpu-intel:$test_tmp/gpu-nvidia" \
+  env LIBVA_DRIVER_NAME=nvidia "$launcher_under_test"
+
+grep -Fxq 'LIBVA_DRIVER_NAME=' "$output" ||
+  fail "the Chromium launcher clears an inherited NVIDIA VA-API driver for Intel" "$(cat "$output")"
+pass "Chromium clears an inherited NVIDIA VA-API driver when rendering on Intel"
+
 # A caller's deliberate node selection has higher priority than the automatic
 # selectors, so the wrapper must not add a conflicting DRI_PRIME value.
 run_launcher \
